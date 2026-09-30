@@ -31,5 +31,10 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "next-auth": {
+      "nodemailer": "$nodemailer"
+    }
   }
 }
