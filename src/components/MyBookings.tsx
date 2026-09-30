@@ -7,6 +7,7 @@ import { api, errMsg } from "@/lib/fetcher";
 import { dayMonth, formatDateVi, nowVN, shortDayVi } from "@/lib/time";
 import type { PublicBooking, Room } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
+import StatusBadge from "./StatusBadge";
 import { Alert, btnGhost } from "./ui";
 
 export default function MyBookings() {
@@ -36,7 +37,7 @@ export default function MyBookings() {
       <div className="flex items-center gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Lịch đặt phòng của tôi</h1>
-          <p className="text-sm text-slate-500">Các lịch sắp diễn ra do bạn đặt.</p>
+          <p className="text-sm text-slate-500">Các lịch sắp diễn ra do bạn đặt, kể cả lịch đang chờ duyệt hoặc bị từ chối.</p>
         </div>
         <Link href="/" className={`${btnGhost} ml-auto`}>
           Đặt phòng mới
@@ -65,7 +66,10 @@ export default function MyBookings() {
               </div>
               <div className="w-1 shrink-0 rounded-full" style={{ background: r?.color ?? "#94a3b8" }} />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-semibold text-slate-900">{b.title}</div>
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-semibold text-slate-900">{b.title}</span>
+                  {b.status !== "confirmed" && <StatusBadge status={b.status} className="shrink-0" />}
+                </div>
                 <div className="text-sm text-slate-600">
                   {r?.name ?? b.roomId} · {b.start} – {b.end}
                 </div>
@@ -78,10 +82,16 @@ export default function MyBookings() {
                   {b.attendees > 0 && b.notes && " · "}
                   {b.notes && <span className="truncate">{b.notes}</span>}
                 </div>
+                {b.status === "rejected" && (
+                  <div className="mt-1 text-xs text-red-700">Lý do từ chối: {b.decisionNote || "(quản trị viên không ghi lý do)"}</div>
+                )}
+                {b.status === "pending" && <div className="mt-1 text-xs text-amber-800">Đang chờ admin duyệt. Bạn sẽ nhận email khi có kết quả.</div>}
               </div>
-              <button onClick={() => cancel(b)} className="self-center rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
-                Hủy
-              </button>
+              {b.canCancel && (
+                <button onClick={() => cancel(b)} className="self-center rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
+                  Hủy
+                </button>
+              )}
             </li>
           );
         })}

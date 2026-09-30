@@ -60,4 +60,20 @@ export const roomSchema = z.object({
   ),
   color: z.string().regex(HEX_RE, "Màu không hợp lệ"),
   active: z.boolean().default(true),
+  requiresApproval: z.boolean().default(false),
+});
+
+/** Admin duyệt / từ chối 1 lịch đang chờ. */
+export const decisionSchema = z.object({
+  decision: z.enum(["approve", "reject"], "Quyết định không hợp lệ"),
+  note: z.string().trim().max(500, "Lý do quá dài (tối đa 500 ký tự)").default(""),
+});
+
+export const adminEmailSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(200, "Email quá dài")
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Email không hợp lệ"),
 });

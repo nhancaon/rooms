@@ -1,4 +1,4 @@
-import type { Booking, BookingStatus, Room } from "../types";
+import type { AdminEntry, Booking, BookingStatus, Room } from "../types";
 import { DEFAULT_ROOMS } from "./default-rooms";
 import type { BookingRepository } from "./types";
 
@@ -6,6 +6,7 @@ import type { BookingRepository } from "./types";
 export class MemoryRepository implements BookingRepository {
   private rooms: Room[] = DEFAULT_ROOMS.map((r) => ({ ...r }));
   private bookings: Booking[] = [];
+  private admins: AdminEntry[] = [];
 
   async listRooms() {
     return this.rooms.map((r) => ({ ...r }));
@@ -50,5 +51,17 @@ export class MemoryRepository implements BookingRepository {
 
   async deleteBooking(id: string) {
     this.bookings = this.bookings.filter((b) => b.id !== id);
+  }
+
+  async listAdmins() {
+    return this.admins.map((a) => ({ ...a }));
+  }
+
+  async addAdmin(entry: AdminEntry) {
+    if (!this.admins.some((a) => a.email === entry.email)) this.admins.push({ ...entry });
+  }
+
+  async removeAdmin(email: string) {
+    this.admins = this.admins.filter((a) => a.email !== email);
   }
 }

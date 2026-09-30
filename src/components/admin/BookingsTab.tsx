@@ -1,16 +1,18 @@
 "use client";
 
-import { Download, Pencil, Search, Trash2, XCircle } from "lucide-react";
+import { Check, Download, Pencil, Search, Trash2, X, XCircle } from "lucide-react";
 import { useState } from "react";
 import { api, errMsg } from "@/lib/fetcher";
 import { addDays, formatDateShort, formatDateTimeVN, formatDateVi, nowVN } from "@/lib/time";
-import type { Booking, Room } from "@/lib/types";
+import { holdsSlot, type Booking, type BookingStatus, type Room } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 import BookingEditDialog from "../BookingEditDialog";
+import DecisionDialog from "../DecisionDialog";
+import StatusBadge, { statusLabel } from "../StatusBadge";
 import DatePicker from "../DatePicker";
 import { Alert, btnGhost, inputCls } from "../ui";
 
-type Status = "confirmed" | "cancelled" | "all";
+type Status = BookingStatus | "all";
 
 // Excel/Sheets sẽ chạy công thức nếu ô bắt đầu bằng = + - @ nên thêm dấu ' phía trước.
 function csvCell(v: string | number) {
@@ -20,9 +22,9 @@ function csvCell(v: string | number) {
 }
 
 function exportCsv(rows: Booking[], roomName: (id: string) => string) {
-  const head = ["Ngày", "Từ", "Đến", "Phòng", "Chủ đề cuộc họp", "Người đặt", "Email", "Số người", "Yêu cầu khác", "Trạng thái", "Đặt lúc"];
+  const head = ["Ngày", "Từ", "Đến", "Phòng", "Chủ đề cuộc họp", "Người đặt", "Email", "Số người", "Yêu cầu khác", "Trạng thái", "Lý do từ chối", "Đặt lúc"];
   const lines = rows.map((b) =>
-    [formatDateShort(b.date), b.start, b.end, roomName(b.roomId), b.title, b.requesterName, b.requesterEmail, b.attendees || "", b.notes, b.status === "confirmed" ? "Hiệu lực" : "Đã hủy", formatDateTimeVN(b.createdAt)]
+    [formatDateShort(b.date), b.start, b.end, roomName(b.roomId), b.title, b.requesterName, b.requesterEmail, b.attendees || "", b.notes, statusLabel(b.status), b.decisionNote, formatDateTimeVN(b.createdAt)]
       .map(csvCell)
       .join(","),
   );
@@ -43,6 +45,8 @@ export default function BookingsTab({ rooms }: { rooms: Room[] }) {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Booking | null>(null);
+  const [deciding, setDeciding] = useState<{ b: Booking; mode: "approve" | "reject" } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const params = new URLSearchParams({ status });
@@ -116,6 +120,8 @@ export default function BookingsTab({ rooms }: { rooms: Room[] }) {
             Trạng thái
             <select className={`${inputCls} mt-1 w-auto!`} value={status} onChange={(e) => setStatus(e.target.value as Status)}>
               <option value="confirmed">Đang hiệu lực</option>
+              <option value="pending">Chờ duyệt</option>
+              <option value="rejected">Bị từ chối</option>
               <option value="cancelled">Đã hủy</option>
               <option value="all">Tất cả</option>
             </select>
@@ -159,6 +165,7 @@ export default function BookingsTab({ rooms }: { rooms: Room[] }) {
         </div>
       </div>
 
+      {notice && <Alert kind="success">{notice}</Alert>}
       {(error || actionError) && <Alert>{actionError ?? error}</Alert>}
 
       {/* Bảng */}
@@ -177,7 +184,7 @@ export default function BookingsTab({ rooms }: { rooms: Room[] }) {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((b) => {
-              const active = b.status === "confirmed";
+              const active = holdsSlot(b);
               return (
                 <tr key={b.id} className={`align-top hover:bg-slate-50/60 ${active ? "" : "text-slate-400"}`}>
                   <td className="whitespace-nowrap px-4 py-3">
@@ -203,12 +210,21 @@ export default function BookingsTab({ rooms }: { rooms: Room[] }) {
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{b.attendees > 0 ? b.attendees : "—"}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                      {active ? "Hiệu lực" : "Đã hủy"}
-                    </span>
+                    <StatusBadge status={b.status} />
+                    {b.status === "rejected" && b.decisionNote && <div className="mt-1 max-w-[12rem] text-xs text-slate-600">Lý do: {b.decisionNote}</div>}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     <div className="inline-flex gap-1">
+                      {b.status === "pending" && (
+                        <>
+                          <button onClick={() => setDeciding({ b, mode: "approve" })} title="Duyệt" aria-label="Duyệt" className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50">
+                            <Check size={16} />
+                          </button>
+                          <button onClick={() => setDeciding({ b, mode: "reject" })} title="Từ chối" aria-label="Từ chối" className="rounded-md p-1.5 text-red-600 hover:bg-red-50">
+                            <X size={16} />
+                          </button>
+                        </>
+                      )}
                       {active && (
                         <>
                           <button onClick={() => setEditing(b)} title="Chỉnh sửa" className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-indigo-600">
@@ -237,6 +253,20 @@ export default function BookingsTab({ rooms }: { rooms: Room[] }) {
           </tbody>
         </table>
       </div>
+
+      {deciding && (
+        <DecisionDialog
+          booking={deciding.b}
+          mode={deciding.mode}
+          roomName={roomName(deciding.b.roomId)}
+          onClose={() => setDeciding(null)}
+          onDone={(msg) => {
+            setDeciding(null);
+            setNotice(msg);
+            void reload();
+          }}
+        />
+      )}
 
       {editing && (
         <BookingEditDialog

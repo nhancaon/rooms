@@ -1,4 +1,4 @@
-import type { Booking, BookingStatus, Room } from "../types";
+import type { AdminEntry, Booking, BookingStatus, Room } from "../types";
 
 /**
  * Lớp truy cập dữ liệu. Toàn bộ app chỉ nói chuyện với interface này,
@@ -30,4 +30,9 @@ export interface BookingRepository {
   setBookingStatus(id: string, status: BookingStatus): Promise<void>;
   /** Xóa vĩnh viễn. */
   deleteBooking(id: string): Promise<void>;
+
+  /** Quản trị viên được cấp trong Google Sheet (tab Admins), ngoài danh sách ADMIN_EMAILS. */
+  listAdmins(opts?: { fresh?: boolean }): Promise<AdminEntry[]>;
+  addAdmin(entry: AdminEntry): Promise<void>;
+  removeAdmin(email: string): Promise<void>;
 }

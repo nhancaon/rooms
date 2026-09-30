@@ -4,10 +4,10 @@ import { adminBookingSchema } from "@/lib/schema";
 
 export function PATCH(req: Request, ctx: RouteContext<"/api/admin/bookings/[id]">) {
   return handle(async () => {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const { id } = await ctx.params;
     const patch = await parseBody(req, adminBookingSchema);
-    return json({ booking: await adminUpdateBooking(id, patch) });
+    return json({ booking: await adminUpdateBooking(id, patch, admin) });
   });
 }
 

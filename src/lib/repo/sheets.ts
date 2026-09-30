@@ -3,11 +3,12 @@ import { colorFor, HEX_RE } from "../colors";
 import { BOOKINGS_CACHE_MS, PAST_MONTH_CACHE_MS, ROOMS_CACHE_MS } from "../config";
 import { DATE_RE, nowVN, toHHmm, toMinutes } from "../time";
 import { TtlCache } from "../ttl-cache";
-import type { Booking, BookingStatus, Room } from "../types";
+import type { AdminEntry, Booking, BookingStatus, Room } from "../types";
 import { DEFAULT_ROOMS } from "./default-rooms";
 import type { BookingRepository } from "./types";
 
 const ROOMS_TAB = "Rooms";
+const ADMINS_TAB = "Admins";
 
 // Mỗi tháng 1 tab: "Bookings_2026-10". Lịch thuộc tab theo NGÀY DIỄN RA (không phải ngày đặt).
 // Muốn dọn dữ liệu cũ chỉ cần xóa tab của tháng đó trong Google Sheet.
@@ -20,7 +21,8 @@ const LEGACY_TAB = "Bookings";
 const LEGACY_WORKING_TAB = "_Bookings_dang_chuyen";
 const LEGACY_DONE_TAB = "_Bookings_cu";
 
-const ROOM_COLS = ["id", "name", "location", "capacity", "active", "color"] as const;
+const ROOM_COLS = ["id", "name", "location", "capacity", "active", "color", "requiresApproval"] as const;
+const ADMIN_COLS = ["email", "addedBy", "addedAt"] as const;
 
 const BOOKING_COLS = [
   "id",
@@ -35,6 +37,9 @@ const BOOKING_COLS = [
   "requesterEmail",
   "status",
   "createdAt",
+  "decisionNote",
+  "decidedBy",
+  "decidedAt",
 ] as const satisfies readonly (keyof Booking)[];
 
 const colLetter = (i: number) => String.fromCharCode(65 + i); // đủ cho < 26 cột
@@ -54,6 +59,7 @@ export type SheetsConfig = {
 export class SheetsRepository implements BookingRepository {
   private api: sheets_v4.Sheets;
   private roomsCache = new TtlCache<Room[]>(ROOMS_CACHE_MS);
+  private adminsCache = new TtlCache<AdminEntry[]>(30_000);
   /** tên tab tháng -> sheetId (chỉ các tab đúng dạng Bookings_YYYY-MM) */
   private tabsCache = new TtlCache<Map<string, number>>(30_000);
   private monthCaches = new Map<string, TtlCache<Booking[]>>();
@@ -117,6 +123,45 @@ export class SheetsRepository implements BookingRepository {
     if (!row) throw new Error(`Không tìm thấy phòng ${id}`);
     await this.deleteRow(ROOMS_TAB, row);
     this.roomsCache.invalidate();
+  }
+
+  // ---------- quản trị viên (tab Admins) ----------
+
+  async listAdmins(opts: { fresh?: boolean } = {}) {
+    return this.adminsCache.get(async () => {
+      await this.ensureSchema();
+      const res = await this.api.spreadsheets.values.get({
+        spreadsheetId: this.cfg.spreadsheetId,
+        range: rng(ADMINS_TAB, "A2:C"),
+      });
+      return (res.data.values ?? [])
+        .map((r) => ({ email: str(r[0]).toLowerCase(), addedBy: str(r[1]), addedAt: str(r[2]) }))
+        .filter((a) => a.email);
+    }, opts.fresh);
+  }
+
+  async addAdmin(entry: AdminEntry) {
+    await this.ensureSchema();
+    await this.api.spreadsheets.values.append({
+      spreadsheetId: this.cfg.spreadsheetId,
+      range: rng(ADMINS_TAB, "A:C"),
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [[entry.email, entry.addedBy, entry.addedAt]] },
+    });
+    this.adminsCache.invalidate();
+  }
+
+  async removeAdmin(email: string) {
+    await this.ensureSchema();
+    const res = await this.api.spreadsheets.values.get({
+      spreadsheetId: this.cfg.spreadsheetId,
+      range: rng(ADMINS_TAB, "A2:A"),
+    });
+    // So sánh không phân biệt hoa thường vì người dùng có thể tự gõ email vào Sheet.
+    const idx = (res.data.values ?? []).findIndex((r) => str(r[0]).toLowerCase() === email.toLowerCase());
+    if (idx !== -1) await this.deleteRow(ADMINS_TAB, idx + 2);
+    this.adminsCache.invalidate();
   }
 
   // ---------- lịch đặt phòng ----------
@@ -420,10 +465,11 @@ export class SheetsRepository implements BookingRepository {
     const meta = await this.api.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" });
     const existing = new Set((meta.data.sheets ?? []).map((s) => s.properties?.title));
 
-    if (!existing.has(ROOMS_TAB)) {
+    const addTabs = [ROOMS_TAB, ADMINS_TAB].filter((t) => !existing.has(t));
+    if (addTabs.length) {
       await this.api.spreadsheets.batchUpdate({
         spreadsheetId,
-        requestBody: { requests: [{ addSheet: { properties: { title: ROOMS_TAB } } }] },
+        requestBody: { requests: addTabs.map((title) => ({ addSheet: { properties: { title } } })) },
       });
     }
 
@@ -432,18 +478,47 @@ export class SheetsRepository implements BookingRepository {
     const data: sheets_v4.Schema$ValueRange[] = [];
     if (!top[0]?.[0]) {
       data.push({ range: rng(ROOMS_TAB, "A1"), values: [[...ROOM_COLS]] });
-    } else if (!top[0][5]) {
-      // sheet tạo từ phiên bản cũ chưa có cột màu
-      data.push({ range: rng(ROOMS_TAB, "F1"), values: [["color"]] });
+    } else if (top[0].length < ROOM_COLS.length) {
+      // sheet tạo từ phiên bản cũ thiếu cột mới (color, requiresApproval...): chỉ bổ sung phần tiêu đề còn thiếu
+      const n = top[0].length;
+      data.push({ range: rng(ROOMS_TAB, `${colLetter(n)}1`), values: [[...ROOM_COLS.slice(n)]] });
     }
     // Phòng mẫu nếu tab Rooms chưa có dòng dữ liệu nào
     if (!top[1]?.[0]) data.push({ range: rng(ROOMS_TAB, "A2"), values: DEFAULT_ROOMS.map(roomToRow) });
+    // Tab Admins mới tạo: ghi tiêu đề
+    const adminProbe = await this.api.spreadsheets.values.get({ spreadsheetId, range: rng(ADMINS_TAB, "A1:C1") });
+    if (!adminProbe.data.values?.[0]?.[0]) data.push({ range: rng(ADMINS_TAB, "A1"), values: [[...ADMIN_COLS]] });
     if (data.length) {
       await this.api.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "RAW", data } });
     }
 
     await this.migrateLegacyBookings();
+    await this.upgradeMonthHeaders();
     this.tabsCache.invalidate();
+  }
+
+  /** Tab tháng tạo từ phiên bản cũ thiếu các cột mới (vd. decisionNote): bổ sung tiêu đề, dữ liệu giữ nguyên. */
+  private async upgradeMonthHeaders() {
+    const tabs = [...(await this.monthTabs(true)).keys()];
+    if (!tabs.length) return;
+    const res = await this.api.spreadsheets.values.batchGet({
+      spreadsheetId: this.cfg.spreadsheetId,
+      ranges: tabs.map((t) => rng(t, `A1:${LAST_BOOKING_COL}1`)),
+    });
+    const data: sheets_v4.Schema$ValueRange[] = [];
+    (res.data.valueRanges ?? []).forEach((vr, i) => {
+      const head = (vr.values?.[0] ?? []).map((c) => str(c));
+      while (head.length && head[head.length - 1] === "") head.pop();
+      if (head.length && head.length < BOOKING_COLS.length && head.every((h, k) => h === BOOKING_COLS[k])) {
+        data.push({ range: rng(tabs[i], `${colLetter(head.length)}1`), values: [[...BOOKING_COLS.slice(head.length)]] });
+      }
+    });
+    if (data.length) {
+      await this.api.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.cfg.spreadsheetId,
+        requestBody: { valueInputOption: "RAW", data },
+      });
+    }
   }
 
   /**
@@ -526,7 +601,15 @@ function isBadRange(err: unknown): boolean {
 }
 
 function roomToRow(r: Room): string[] {
-  return [r.id, r.name, r.location, r.capacity == null ? "" : String(r.capacity), r.active ? "TRUE" : "FALSE", r.color];
+  return [
+    r.id,
+    r.name,
+    r.location,
+    r.capacity == null ? "" : String(r.capacity),
+    r.active ? "TRUE" : "FALSE",
+    r.color,
+    r.requiresApproval ? "TRUE" : "FALSE",
+  ];
 }
 
 function bookingToRow(b: Booking): string[] {
@@ -534,7 +617,7 @@ function bookingToRow(b: Booking): string[] {
 }
 
 function parseRoom(row: Row, index: number): Room | null {
-  const [id, name, location, capacity, active, color] = [0, 1, 2, 3, 4, 5].map((i) => str(row[i]));
+  const [id, name, location, capacity, active, color, approval] = [0, 1, 2, 3, 4, 5, 6].map((i) => str(row[i]));
   if (!id || !name) return null;
   const cap = Number(capacity);
   return {
@@ -544,6 +627,7 @@ function parseRoom(row: Row, index: number): Room | null {
     capacity: capacity !== "" && Number.isFinite(cap) ? cap : null,
     active: !/^(false|0|no|n|không)$/i.test(active),
     color: HEX_RE.test(color) ? color : colorFor(index),
+    requiresApproval: /^(true|1|yes|y|có)$/i.test(approval),
   };
 }
 
@@ -573,6 +657,11 @@ function parseBooking(row: Row): Booking | null {
     start: normTime(cells.start),
     end: normTime(cells.end),
     attendees: Number.isFinite(attendees) ? attendees : 0,
-    status: cells.status.toLowerCase() === "cancelled" ? "cancelled" : "confirmed",
+    status: parseStatus(cells.status),
   };
+}
+
+function parseStatus(v: string): BookingStatus {
+  const s = v.trim().toLowerCase();
+  return s === "cancelled" || s === "pending" || s === "rejected" ? s : "confirmed";
 }

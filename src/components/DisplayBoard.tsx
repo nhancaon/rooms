@@ -27,6 +27,8 @@ export default function DisplayBoard({ roomId }: { roomId?: string }) {
   }
 
   const rooms = roomId ? data.rooms.filter((r) => r.id === roomId) : data.rooms;
+  // Lịch chờ duyệt chưa chắc được dùng nên không tính là "đang sử dụng" trên màn hình phòng.
+  const bookings = data.bookings.filter((b) => b.status === "confirmed");
   if (roomId && rooms.length === 0) {
     return <div className="grid min-h-screen place-items-center text-2xl text-slate-300">Không tìm thấy phòng “{roomId}”.</div>;
   }
@@ -47,11 +49,11 @@ export default function DisplayBoard({ roomId }: { roomId?: string }) {
       </div>
 
       {roomId ? (
-        <SingleRoom room={rooms[0]} list={data.bookings.filter((b) => b.roomId === roomId)} nowMin={now.minutes} />
+        <SingleRoom room={rooms[0]} list={bookings.filter((b) => b.roomId === roomId)} nowMin={now.minutes} />
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {rooms.map((room) => (
-            <RoomCard key={room.id} room={room} list={data.bookings.filter((b) => b.roomId === room.id)} nowMin={now.minutes} />
+            <RoomCard key={room.id} room={room} list={bookings.filter((b) => b.roomId === room.id)} nowMin={now.minutes} />
           ))}
         </div>
       )}

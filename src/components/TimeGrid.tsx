@@ -178,7 +178,11 @@ export default function TimeGrid({ columns, bookings, colorOf, nowMs, colMin, on
                       onClick={() => onOpen(b)}
                       title={`${b.start}–${b.end} · ${b.title}`}
                       className={`absolute inset-x-1 cursor-pointer overflow-hidden rounded-md px-2 text-left shadow-sm transition hover:brightness-95 hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${h < 30 ? "py-0" : "py-1"}`}
-                      style={{ top: top + 1, height: h - 2, background: `${color}26`, borderLeft: `4px solid ${color}` }}
+                      style={
+                        b.status === "pending"
+                          ? { top: top + 1, height: h - 2, background: `repeating-linear-gradient(135deg, ${color}14, ${color}14 6px, ${color}2e 6px, ${color}2e 12px)`, border: `1.5px dashed ${color}`, borderLeftWidth: 4 }
+                          : { top: top + 1, height: h - 2, background: `${color}26`, borderLeft: `4px solid ${color}` }
+                      }
                     >
                       <div className="flex items-center gap-1">
                         <span className={`truncate font-semibold leading-tight text-slate-900 ${h < 30 ? "text-xs" : "text-[13px]"}`}>{b.title}</span>
@@ -186,6 +190,9 @@ export default function TimeGrid({ columns, bookings, colorOf, nowMs, colMin, on
                           <span className="shrink-0 rounded px-1 text-[10px] font-semibold text-white" style={{ background: color }}>
                             Bạn
                           </span>
+                        )}
+                        {b.status === "pending" && h >= 44 && (
+                          <span className="shrink-0 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800">Chờ duyệt</span>
                         )}
                         {h < 44 && (
                           <span className="ml-auto shrink-0 pl-1 text-[11px] font-medium tabular-nums text-slate-700">

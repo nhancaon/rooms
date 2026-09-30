@@ -17,6 +17,8 @@ import {
 import type { PublicBooking, Room } from "@/lib/types";
 import { useBoard, useServerNow } from "@/lib/use-board";
 import BookingEditDialog from "./BookingEditDialog";
+import DecisionDialog from "./DecisionDialog";
+import StatusBadge from "./StatusBadge";
 import BookingModal, { type Draft } from "./BookingModal";
 import DatePicker from "./DatePicker";
 import TimeGrid, { type GridColumn } from "./TimeGrid";
@@ -32,6 +34,7 @@ export default function CalendarView({ initialDate, user }: { initialDate: strin
   const [draft, setDraft] = useState<Draft | null>(null);
   const [detail, setDetail] = useState<PublicBooking | null>(null);
   const [editing, setEditing] = useState<PublicBooking | null>(null);
+  const [deciding, setDeciding] = useState<{ b: PublicBooking; mode: "approve" | "reject" } | null>(null);
   const [loginPrompt, setLoginPrompt] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -188,7 +191,12 @@ export default function CalendarView({ initialDate, user }: { initialDate: strin
           onClose={() => setDraft(null)}
           onCreated={(b) => {
             setDraft(null);
-            flash("success", `Đã đặt ${roomOf(b.roomId)?.name ?? "phòng"} · ${dayMonth(b.date)} · ${b.start}–${b.end}`);
+            flash(
+              "success",
+              b.status === "pending"
+                ? `Đã gửi yêu cầu ${roomOf(b.roomId)?.name ?? "phòng"} · ${dayMonth(b.date)} · ${b.start}–${b.end}. Đang chờ admin duyệt.`
+                : `Đã đặt ${roomOf(b.roomId)?.name ?? "phòng"} · ${dayMonth(b.date)} · ${b.start}–${b.end}`,
+            );
             void reload();
           }}
         />
@@ -204,9 +212,27 @@ export default function CalendarView({ initialDate, user }: { initialDate: strin
             setEditing(detail);
             setDetail(null);
           }}
+          onDecide={(mode) => {
+            setDeciding({ b: detail, mode });
+            setDetail(null);
+          }}
           onCancelled={() => {
             setDetail(null);
             flash("success", "Đã hủy lịch.");
+            void reload();
+          }}
+        />
+      )}
+
+      {deciding && (
+        <DecisionDialog
+          booking={deciding.b}
+          mode={deciding.mode}
+          roomName={roomOf(deciding.b.roomId)?.name ?? deciding.b.roomId}
+          onClose={() => setDeciding(null)}
+          onDone={(msg) => {
+            setDeciding(null);
+            flash("success", msg);
             void reload();
           }}
         />
@@ -295,6 +321,7 @@ function DetailDialog({
   isAdmin,
   onClose,
   onEdit,
+  onDecide,
   onCancelled,
 }: {
   booking: PublicBooking;
@@ -302,6 +329,7 @@ function DetailDialog({
   isAdmin: boolean;
   onClose: () => void;
   onEdit: () => void;
+  onDecide: (mode: "approve" | "reject") => void;
   onCancelled: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -336,7 +364,17 @@ function DetailDialog({
       onClose={onClose}
       footer={
         <>
-          {b.canCancel && (
+          {isAdmin && b.status === "pending" && (
+            <>
+              <button onClick={() => onDecide("approve")} className={btnPrimary}>
+                Duyệt
+              </button>
+              <button onClick={() => onDecide("reject")} className={btnDanger}>
+                Từ chối
+              </button>
+            </>
+          )}
+          {b.canCancel && !(isAdmin && b.status === "pending") && (
             <button onClick={cancel} disabled={busy} className={btnDanger}>
               {busy ? "Đang hủy..." : "Hủy lịch"}
             </button>
@@ -353,6 +391,11 @@ function DetailDialog({
       }
     >
       <div className="mb-4 h-1.5 rounded-full" style={{ background: room?.color ?? "#64748b" }} />
+      {b.status === "pending" && (
+        <div className="mb-3 flex items-center gap-2 text-sm text-amber-900">
+          <StatusBadge status="pending" /> Lịch đang giữ chỗ và chờ admin duyệt.
+        </div>
+      )}
       <dl className="space-y-2.5 text-sm">
         {rows
           .filter(([, v]) => v)

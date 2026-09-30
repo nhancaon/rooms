@@ -5,6 +5,8 @@ export type Room = {
   capacity: number | null;
   active: boolean;
   color: string; // #rrggbb, màu hiển thị trên lịch
+  /** true: lịch đặt ở phòng này phải được admin duyệt mới có hiệu lực (admin tự đặt thì có hiệu lực ngay). */
+  requiresApproval: boolean;
 };
 
 /** Dữ liệu admin gửi khi tạo/sửa phòng (id do hệ thống sinh, không đổi được). */
@@ -14,9 +16,19 @@ export type RoomInput = {
   capacity: number | null;
   color: string;
   active: boolean;
+  requiresApproval: boolean;
 };
 
-export type BookingStatus = "confirmed" | "cancelled";
+/**
+ * pending   = chờ admin duyệt (vẫn giữ chỗ, người khác không đặt trùng được)
+ * confirmed = đã có hiệu lực
+ * rejected  = admin từ chối (giải phóng phòng)
+ * cancelled = người đặt hoặc admin hủy (giải phóng phòng)
+ */
+export type BookingStatus = "pending" | "confirmed" | "rejected" | "cancelled";
+
+/** Lịch còn giữ chỗ trên phòng (chặn người khác đặt trùng). */
+export const holdsSlot = (b: { status: BookingStatus }) => b.status === "pending" || b.status === "confirmed";
 
 export type Booking = {
   id: string;
@@ -31,6 +43,9 @@ export type Booking = {
   requesterEmail: string;
   status: BookingStatus;
   createdAt: string; // ISO
+  decisionNote: string; // lý do từ chối (nếu có)
+  decidedBy: string; // email admin đã duyệt/từ chối
+  decidedAt: string; // ISO
 };
 
 /** Dữ liệu client gửi lên (đã validate). Thông tin người đặt lấy từ phiên đăng nhập. */
@@ -60,12 +75,23 @@ export type PublicBooking = {
   title: string;
   attendees: number;
   requesterName: string;
+  status: BookingStatus;
   mine: boolean;
   canCancel: boolean;
   // chỉ có với chủ lịch / admin
   notes?: string;
   requesterEmail?: string;
+  decisionNote?: string;
 };
+
+/** Một quản trị viên: từ biến môi trường ADMIN_EMAILS (không xóa được trên giao diện) hoặc từ tab Admins trong Google Sheet. */
+export type AdminEntry = {
+  email: string;
+  addedBy: string;
+  addedAt: string;
+};
+
+export type AdminListItem = AdminEntry & { source: "env" | "sheet" };
 
 export type BoardResponse = {
   from: string;

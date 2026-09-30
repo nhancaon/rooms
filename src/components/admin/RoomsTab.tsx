@@ -31,6 +31,7 @@ export default function RoomsTab({ rooms, error, onChanged }: Props) {
     capacity: r.capacity,
     color: r.color,
     active: r.active,
+    requiresApproval: r.requiresApproval,
     ...patch,
   });
 
@@ -72,14 +73,19 @@ export default function RoomsTab({ rooms, error, onChanged }: Props) {
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: r.color }} />
                     <span className={r.active ? "" : "text-slate-500"}>{r.name}</span>
                   </span>
-                  <div className="ml-5 text-xs text-slate-400">/display/{r.id}</div>
+                  <div className="ml-5 text-xs text-slate-500">/display/{r.id}</div>
                 </td>
                 <td className="px-4 py-3">{r.location || "—"}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{r.capacity ?? "—"}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${r.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                    {r.active ? "Đang hoạt động" : "Đã ẩn"}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${r.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                      {r.active ? "Đang hoạt động" : "Đã ẩn"}
+                    </span>
+                    {r.requiresApproval && (
+                      <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">Cần duyệt</span>
+                    )}
+                  </div>
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right">
                   <div className="inline-flex gap-1">
@@ -139,6 +145,7 @@ function RoomDialog({
     capacity: room?.capacity == null ? "" : String(room.capacity),
     color: room?.color ?? nextColor,
     active: room?.active ?? true,
+    requiresApproval: room?.requiresApproval ?? false,
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -200,6 +207,13 @@ function RoomDialog({
             <input type="color" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} className="h-7 w-9 cursor-pointer rounded border border-slate-300" aria-label="Chọn màu khác" />
           </div>
         </div>
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={f.requiresApproval} onChange={(e) => setF({ ...f, requiresApproval: e.target.checked })} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
+          <span>
+            <b>Cần admin duyệt</b> trước khi có hiệu lực
+            <span className="block text-xs text-slate-500">Lịch đặt phòng này sẽ ở trạng thái «Chờ duyệt» (vẫn giữ chỗ) và admin nhận email. Admin tự đặt thì có hiệu lực ngay.</span>
+          </span>
+        </label>
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
           Cho phép đặt phòng này

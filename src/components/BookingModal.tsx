@@ -17,7 +17,7 @@ export type Draft = { roomId: string; date: string; start: string; end: string }
 type Props = {
   rooms: Room[];
   draft: Draft;
-  user: { name: string; email: string };
+  user: { name: string; email: string; isAdmin?: boolean };
   onClose: () => void;
   onCreated: (b: PublicBooking) => void;
 };
@@ -41,6 +41,8 @@ export default function BookingModal({ rooms, draft, user, onClose, onCreated }:
   const roomBusy = !!roomId && busy(roomId);
   const room = rooms.find((r) => r.id === roomId);
   const today = nowVN().date;
+  // Phòng bật "cần duyệt": lịch của người thường sẽ ở trạng thái chờ duyệt (admin tự đặt thì có hiệu lực ngay).
+  const needsApproval = !!room?.requiresApproval && !user.isAdmin;
 
   function onStart(v: string) {
     setStart(v);
@@ -69,7 +71,7 @@ export default function BookingModal({ rooms, draft, user, onClose, onCreated }:
 
   return (
     <Modal
-      title="Đặt phòng họp"
+      title={needsApproval ? "Yêu cầu đặt phòng họp" : "Đặt phòng họp"}
       subtitle={`${formatDateVi(date)} · ${start} – ${end}`}
       onClose={onClose}
       footer={
@@ -78,7 +80,7 @@ export default function BookingModal({ rooms, draft, user, onClose, onCreated }:
             Hủy
           </button>
           <button form={formId} disabled={submitting || roomBusy} className={btnPrimary}>
-            {submitting ? "Đang gửi..." : "Đặt phòng"}
+            {submitting ? "Đang gửi..." : needsApproval ? "Gửi yêu cầu" : "Đặt phòng"}
           </button>
         </>
       }
@@ -122,6 +124,11 @@ export default function BookingModal({ rooms, draft, user, onClose, onCreated }:
             </select>
           </Field>
         </div>
+        {needsApproval && (
+          <Alert kind="info">
+            Phòng này cần <b>admin duyệt</b>. Sau khi gửi, lịch sẽ giữ chỗ ở trạng thái <b>Chờ duyệt</b> và bạn nhận email khi có kết quả (duyệt hoặc từ chối).
+          </Alert>
+        )}
         {roomBusy && <Alert>Phòng này đã có người đặt trong khung giờ {start}–{end}. Hãy chọn giờ hoặc phòng khác.</Alert>}
 
         <Field label="Số người tham dự" hint="Không bắt buộc, giúp bộ phận hành chính chuẩn bị phòng.">

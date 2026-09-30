@@ -16,7 +16,7 @@ const idle = "font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900
 const active = "bg-indigo-50 font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200";
 
 /** Thanh menu: mục của trang đang mở được tô màu để khỏi bấm nhầm. */
-export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
+export default function NavLinks({ isAdmin, pending = 0 }: { isAdmin: boolean; pending?: number }) {
   const pathname = usePathname();
 
   return (
@@ -32,6 +32,11 @@ export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
             className={`${base} ${isActive ? active : idle}`}
           >
             <i.icon size={16} /> {i.label}
+            {"adminOnly" in i && pending > 0 && (
+              <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white" title={`${pending} lịch đang chờ duyệt`}>
+                {pending}
+              </span>
+            )}
           </Link>
         );
       })}

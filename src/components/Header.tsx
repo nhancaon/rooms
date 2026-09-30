@@ -1,11 +1,14 @@
 import { CalendarDays, LogOut } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "@/auth";
+import { countPending } from "@/lib/booking-service";
 import { getUser } from "@/lib/session";
 import NavLinks from "./NavLinks";
 
 export default async function Header() {
   const user = await getUser();
+  // Admin thấy số lịch đang chờ duyệt ngay trên menu; lỗi đọc dữ liệu thì bỏ qua, không làm hỏng trang.
+  const pending = user?.isAdmin ? await countPending().catch(() => 0) : 0;
   const initial = (user?.name ?? "?").trim().charAt(0).toUpperCase();
 
   return (
@@ -18,7 +21,7 @@ export default async function Header() {
           <span className="text-[15px] font-semibold tracking-tight text-slate-900">Đặt phòng họp</span>
         </Link>
 
-        <NavLinks isAdmin={!!user?.isAdmin} />
+        <NavLinks isAdmin={!!user?.isAdmin} pending={pending} />
 
         <div className="ml-auto flex items-center gap-2">
           {user ? (

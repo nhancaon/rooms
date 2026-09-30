@@ -25,5 +25,5 @@ export default async function AdminPage() {
     );
   }
 
-  return <AdminPanel />;
+  return <AdminPanel currentEmail={user.email} />;
 }

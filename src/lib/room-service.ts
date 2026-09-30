@@ -1,6 +1,6 @@
 import { withLock } from "./lock";
 import { getRepo } from "./repo";
-import { HttpError, type Room, type RoomInput } from "./types";
+import { HttpError, holdsSlot, type Room, type RoomInput } from "./types";
 
 /** "Phòng Họp Lớn Đà Nẵng" -> "phong-hop-lon-da-nang" */
 export function slugify(name: string): string {
@@ -59,7 +59,7 @@ export function deleteRoom(id: string): Promise<void> {
     const rooms = await repo.listRooms({ fresh: true });
     if (!rooms.some((r) => r.id === id)) throw new HttpError(404, "Không tìm thấy phòng.");
     const bookings = await repo.listBookings({ fresh: true });
-    const used = bookings.filter((b) => b.roomId === id && b.status === "confirmed").length;
+    const used = bookings.filter((b) => b.roomId === id && holdsSlot(b)).length;
     if (used > 0) {
       throw new HttpError(409, `Phòng này có ${used} lịch đặt. Hãy hủy các lịch đó hoặc chọn "Ẩn phòng" thay vì xóa.`);
     }
